@@ -1,0 +1,114 @@
+# ============= DOCKER COMPOSE - PRODUCTION =============
+# File: docker-compose.prod.yml
+version: '3.8'
+
+services:
+  # Application Service - Production Configuration
+  logistics-app:
+    image: logistics-ai-agent:latest
+    container_name: logistics-ai-agent-prod
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=logistics
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JAVA_OPTS=-Xmx2048m -Xms1024m -XX:+UseG1GC -XX:MaxGCPauseMillis=100
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - logistics-network
+    volumes:
+      - /var/log/logistics:/app/logs
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+
+  # PostgreSQL Database - Production
+  postgres:
+    image: postgres:15-alpine
+    container_name: logistics-postgres-prod
+    environment:
+      POSTGRES_DB: logistics
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-prod-data:/var/lib/postgresql/data
+      - /etc/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf
+    networks:
+      - logistics-network
+    restart: always
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+
+  # Redis Cache - Production
+  redis:
+    image: redis:7-alpine
+    container_name: logistics-redis-prod
+    volumes:
+      - redis-prod-data:/data
+      - ./docker/redis/redis.conf:/etc/redis/redis.conf
+    networks:
+      - logistics-network
+    restart: always
+    command: redis-server /etc/redis/redis.conf
+
+  # Monitoring with Prometheus (Optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: logistics-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks:
+      - logistics-network
+    restart: always
+
+  # Monitoring with Grafana (Optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: logistics-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    networks:
+      - logistics-network
+    restart: always
+
+volumes:
+  postgres-prod-data:
+    driver: local
+  redis-prod-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+networks:
+  logistics-network:
+    driver: bridge
