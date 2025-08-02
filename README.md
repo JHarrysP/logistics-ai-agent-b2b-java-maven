@@ -256,5 +256,4 @@ docker build -t logistics-ai-agent:prod --target prod .
 
 # Deploy with compose
 docker-compose -f docker-compose.prod.yml up -d
-```#   l o g i s t i c s - a i - a g e n t - b 2 b - j a v a - m a v e n  
- 
+```#
