@@ -1,3 +1,5 @@
+// ============= MOVE OrderStatsResponse to DTO package =============
+// File: src/main/java/com/logistics/dto/OrderStatsResponse.java
 package com.logistics.dto;
 
 /**

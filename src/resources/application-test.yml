@@ -1,0 +1,101 @@
+# Test Environment Configuration
+spring:
+  # Test Database (In-memory H2)
+  datasource:
+    url: jdbc:h2:mem:test_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: test
+    password: test
+  
+  # JPA Test Settings
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: false
+        use_sql_comments: false
+        generate_statistics: false
+    open-in-view: false
+  
+  # H2 Console disabled in tests
+  h2:
+    console:
+      enabled: false
+  
+  # SQL Initialization for tests
+  sql:
+    init:
+      mode: never # Don't run data.sql in tests
+  
+  # Test Jackson Configuration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: UTC
+
+# Test Logging (Minimal)
+logging:
+  level:
+    com.logistics: DEBUG
+    org.springframework: WARN
+    org.hibernate: WARN
+    org.testcontainers: INFO
+    root: WARN
+  pattern:
+    console: "%d{HH:mm:ss} %-5level %logger{36} - %msg%n"
+
+# Test Server Configuration
+server:
+  port: 0 # Random available port for tests
+
+# Test OpenAPI Configuration
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+# Test-specific Application Configuration
+app:
+  logistics:
+    ai-agent:
+      processing-timeout: 10 # Fast timeout for tests
+      max-retry-attempts: 1
+      notification-enabled: false # Disable notifications in tests
+    warehouse:
+      mock-data-enabled: true
+      debug-instructions: false
+      test-mode: true
+    shipping:
+      mock-delivery-enabled: true
+      accelerated-processing: true
+      instant-delivery: true # Instant delivery for tests
+    notifications:
+      console-output: false
+      mock-external-services: true
+      test-mode: true
+
+# Test Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+# Test Async Configuration (Synchronous for deterministic tests)
+test:
+  async:
+    enabled: false # Make async calls synchronous in tests
+  
+# TestContainers Configuration (for integration tests)
+testcontainers:
+  postgres:
+    enabled: false # Use H2 by default, enable for specific integration tests
+  reuse:
+    enabled: true

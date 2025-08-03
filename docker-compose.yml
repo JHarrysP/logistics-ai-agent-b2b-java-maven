@@ -1,11 +1,10 @@
 # ============= DOCKERFILE =============
 # Multi-stage build for optimized production image
-FROM maven:3.8.6-openjdk-11-slim AS build
+FROM maven:3.9.4-openjdk-11-slim AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy pom.xml and download dependencies (this layer will be cached if pom.xml doesn't change)
+# Copy pom.xml and download dependencies (for better Docker layer caching)
 COPY pom.xml .
 RUN mvn dependency:go-offline -B
 
@@ -16,82 +15,66 @@ RUN mvn clean package -DskipTests
 # ============= PRODUCTION IMAGE =============
 FROM openjdk:11-jre-slim
 
-# Set labels for better image management
-LABEL maintainer="logistics-team@company.com" \
-      version="1.0.0" \
-      description="B2B Logistics AI Agent" \
-      org.opencontainers.image.source="https://github.com/company/logistics-ai-agent"
+# Install necessary packages
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create app directory and non-root user for security
-RUN mkdir -p /app/logs && \
-    addgroup --system --gid 1001 appgroup && \
-    adduser --system --uid 1001 --group appuser && \
-    chown -R appuser:appgroup /app
+# Create application user for security
+RUN groupadd -r logistics && useradd -r -g logistics logistics
 
 # Set working directory
 WORKDIR /app
 
-# Copy built jar from build stage
-COPY --from=build --chown=appuser:appgroup /app/target/logistics-ai-agent.jar app.jar
+# Copy jar from builder stage
+COPY --from=builder /app/target/logistics-ai-agent.jar app.jar
 
-# Install curl for health checks
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
-    rm -rf /var/lib/apt/lists/*
+# Create logs directory
+RUN mkdir -p /app/logs && chown -R logistics:logistics /app
 
 # Switch to non-root user
-USER appuser
+USER logistics
 
-# Expose application port
+# Expose port
 EXPOSE 8080
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/actuator/health || exit 1
 
-# Set JVM options for containerized environment
-ENV JAVA_OPTS="-Xmx1024m -Xms512m -XX:+UseContainerSupport -XX:MaxRAMPercentage=80.0"
+# Run the application
+ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]
 
-# Application entry point
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Djava.security.egd=file:/dev/./urandom -Dspring.profiles.active=${SPRING_PROFILES_ACTIVE:prod} -jar app.jar"]
-
-# ============= DOCKER COMPOSE - DEVELOPMENT =============
-# File: docker-compose.yml
+# ============= DOCKER COMPOSE =============
 version: '3.8'
 
 services:
-  # Application Service
+  # Logistics AI Agent Application
   logistics-app:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
     container_name: logistics-ai-agent
     ports:
       - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=logistics
-      - DB_USERNAME=logistics_user
-      - DB_PASSWORD=logistics_pass
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - SPRING_PROFILES_ACTIVE=prod
+      - DATABASE_URL=jdbc:postgresql://postgres:5432/logistics
+      - DATABASE_USERNAME=logistics_user
+      - DATABASE_PASSWORD=secure_password
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
     networks:
       - logistics-network
     volumes:
-      - logistics-logs:/app/logs
+      - ./logs:/app/logs
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
       start_period: 60s
 
   # PostgreSQL Database
@@ -99,15 +82,14 @@ services:
     image: postgres:15-alpine
     container_name: logistics-postgres
     environment:
-      POSTGRES_DB: logistics
-      POSTGRES_USER: logistics_user
-      POSTGRES_PASSWORD: logistics_pass
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+      - POSTGRES_DB=logistics
+      - POSTGRES_USER=logistics_user
+      - POSTGRES_PASSWORD=secure_password
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./docker/postgres/init:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - logistics-network
     restart: unless-stopped
@@ -117,126 +99,22 @@ services:
       timeout: 5s
       retries: 5
 
-  # Redis Cache
+  # Redis for caching (optional)
   redis:
     image: redis:7-alpine
     container_name: logistics-redis
     ports:
       - "6379:6379"
-    volumes:
-      - redis-data:/data
     networks:
       - logistics-network
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
-  # Nginx Reverse Proxy (Optional)
-  nginx:
-    image: nginx:alpine
-    container_name: logistics-nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - logistics-app
-    networks:
-      - logistics-network
-    restart: unless-stopped
-
-# Named volumes for data persistence
-volumes:
-  postgres-data:
-    driver: local
-  redis-data:  
-    driver: local
-  logistics-logs:
-    driver: local
-
-# Custom network for service communication
-networks:
-  logistics-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
-
-# ============= DOCKER COMPOSE - PRODUCTION =============
-# File: docker-compose.prod.yml
-version: '3.8'
-
-services:
-  # Application Service - Production Configuration
-  logistics-app:
-    image: logistics-ai-agent:latest
-    container_name: logistics-ai-agent-prod
-    ports:
-      - "8080:8080"
-    environment:
-      - SPRING_PROFILES_ACTIVE=prod
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=logistics
-      - DB_USERNAME=${DB_USERNAME}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - JAVA_OPTS=-Xmx2048m -Xms1024m -XX:+UseG1GC -XX:MaxGCPauseMillis=100
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - logistics-network
-    volumes:
-      - /var/log/logistics:/app/logs
-    restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: '2.0'
-        reservations:
-          memory: 1G
-          cpus: '1.0'
-
-  # PostgreSQL Database - Production
-  postgres:
-    image: postgres:15-alpine
-    container_name: logistics-postgres-prod
-    environment:
-      POSTGRES_DB: logistics
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-prod-data:/var/lib/postgresql/data
-      - /etc/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf
-    networks:
-      - logistics-network
-    restart: always
-    command: postgres -c config_file=/etc/postgresql/postgresql.conf
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '1.0'
-
-  # Redis Cache - Production
-  redis:
-    image: redis:7-alpine
-    container_name: logistics-redis-prod
-    volumes:
-      - redis-prod-data:/data
-      - ./docker/redis/redis.conf:/etc/redis/redis.conf
-    networks:
-      - logistics-network
-    restart: always
-    command: redis-server /etc/redis/redis.conf
-
-  # Monitoring with Prometheus (Optional)
+  # Prometheus for monitoring
   prometheus:
     image: prom/prometheus:latest
     container_name: logistics-prometheus
@@ -244,215 +122,32 @@ services:
       - "9090:9090"
     volumes:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
+      - prometheus_data:/prometheus
     networks:
       - logistics-network
-    restart: always
+    restart: unless-stopped
 
-  # Monitoring with Grafana (Optional)
+  # Grafana for dashboards
   grafana:
     image: grafana/grafana:latest
     container_name: logistics-grafana
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
     volumes:
-      - grafana-data:/var/lib/grafana
+      - grafana_data:/var/lib/grafana
       - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources
     networks:
       - logistics-network
-    restart: always
-
-volumes:
-  postgres-prod-data:
-    driver: local
-  redis-prod-data:
-    driver: local
-  prometheus-data:
-    driver: local
-  grafana-data:
-    driver: local
+    restart: unless-stopped
 
 networks:
   logistics-network:
     driver: bridge
 
-# ============= DOCKER IGNORE FILE =============
-# File: .dockerignore
-.git
-.gitignore
-README.md
-Dockerfile*
-docker-compose*
-.dockerignore
-target/
-!target/logistics-ai-agent.jar
-.mvn/
-mvnw*
-*.iml
-.idea/
-.vscode/
-.env
-.env.local
-*.log
-logs/
-*.pid
-node_modules/
-npm-debug.log*
-coverage/
-.nyc_output/
-
-# ============= NGINX CONFIGURATION =============
-# File: docker/nginx/nginx.conf
-events {
-    worker_connections 1024;
-}
-
-http {
-    upstream logistics_backend {
-        server logistics-app:8080;
-    }
-
-    # Rate limiting
-    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
-    
-    server {
-        listen 80;
-        server_name localhost;
-
-        # Security headers
-        add_header X-Frame-Options DENY;
-        add_header X-Content-Type-Options nosniff;
-        add_header X-XSS-Protection "1; mode=block";
-        
-        # API proxy
-        location /api/ {
-            limit_req zone=api burst=20 nodelay;
-            
-            proxy_pass http://logistics_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            # Timeouts
-            proxy_connect_timeout 30s;
-            proxy_send_timeout 30s;
-            proxy_read_timeout 30s;
-        }
-        
-        # Health check endpoint (no rate limiting)
-        location /actuator/health {
-            proxy_pass http://logistics_backend;
-            proxy_set_header Host $host;
-        }
-        
-        # Static content
-        location / {
-            proxy_pass http://logistics_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-    }
-}
-
-# ============= KUBERNETES DEPLOYMENT (OPTIONAL) =============
-# File: k8s/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: logistics-ai-agent
-  labels:
-    app: logistics-ai-agent
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: logistics-ai-agent
-  template:
-    metadata:
-      labels:
-        app: logistics-ai-agent
-    spec:
-      containers:
-      - name: logistics-ai-agent
-        image: logistics-ai-agent:latest
-        ports:
-        - containerPort: 8080
-        env:
-        - name: SPRING_PROFILES_ACTIVE
-          value: "k8s"
-        - name: DB_HOST
-          value: "postgres-service"
-        resources:
-          requests:
-            memory: "1Gi"
-            cpu: "500m"
-          limits:
-            memory: "2Gi"
-            cpu: "1000m"
-        livenessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8080
-          initialDelaySeconds: 60
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /actuator/health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-
-# ============= BUILD SCRIPTS =============
-# File: docker/build.sh
-#!/bin/bash
-set -e
-
-# Build script for Docker images
-echo " Building Logistics AI Agent Docker image..."
-
-# Build the application
-echo " Building application with Maven..."
-mvn clean package -DskipTests
-
-# Build Docker image
-echo " Building Docker image..."
-docker build -t logistics-ai-agent:latest .
-
-# Tag for different environments
-docker tag logistics-ai-agent:latest logistics-ai-agent:dev
-docker tag logistics-ai-agent:latest logistics-ai-agent:$(git rev-parse --short HEAD)
-
-echo "Build completed successfully!"
-echo "Available images:"
-docker images | grep logistics-ai-agent
-
-# File: docker/deploy.sh
-#!/bin/bash
-set -e
-
-# Deployment script
-ENVIRONMENT=${1:-dev}
-
-echo " Deploying Logistics AI Agent to $ENVIRONMENT environment..."
-
-case $ENVIRONMENT in
-  "dev")
-    docker-compose up -d
-    ;;
-  "prod")
-    docker-compose -f docker-compose.prod.yml up -d
-    ;;
-  *)
-    echo " Unknown environment: $ENVIRONMENT"
-    echo "Usage: ./deploy.sh [dev|prod]"
-    exit 1
-    ;;
-esac
-
-echo "Deployment completed!"
-echo "Checking service status..."
-docker-compose ps
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
