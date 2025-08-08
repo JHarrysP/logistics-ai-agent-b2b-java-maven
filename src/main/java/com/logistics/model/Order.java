@@ -1,4 +1,4 @@
-/ ============= ORDER ENTITY =============
+// ============= ORDER ENTITY =============
 package com.logistics.model;
 
 import javax.persistence.*;

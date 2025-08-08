@@ -15,11 +15,11 @@ import java.util.List;
  * OpenAPI/Swagger configuration for API documentation
  */
 @Configuration
-public class OpenApiConfig {
-    
+class OpenApiConfig {
+
     @Value("${server.port:8080}")
     private String serverPort;
-    
+
     @Bean
     public OpenAPI customOpenAPI() {
         return new OpenAPI()
@@ -27,7 +27,7 @@ public class OpenApiConfig {
                         .title("B2B Logistics AI Agent API")
                         .version("1.0.0")
                         .description("AI-powered B2B logistics workflow automation system for order processing, " +
-                                   "inventory management, warehouse operations, and shipping coordination.")
+                                "inventory management, warehouse operations, and shipping coordination.")
                         .contact(new Contact()
                                 .name("Logistics Development Team")
                                 .email("logistics-dev@company.com")
