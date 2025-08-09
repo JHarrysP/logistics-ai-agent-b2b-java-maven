@@ -14,7 +14,9 @@ import java.util.List;
 /**
  * Repository interface for Order entity operations
  */
+
 @Repository
+
 public interface OrderRepository extends JpaRepository<Order, Long> {
     
     /**

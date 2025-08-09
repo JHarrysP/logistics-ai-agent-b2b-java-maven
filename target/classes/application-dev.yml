@@ -13,7 +13,7 @@ spring:
   # JPA Development Settings
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto:
     show-sql: true
     properties:
       hibernate:
