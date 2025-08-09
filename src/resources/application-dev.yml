@@ -58,7 +58,7 @@ logging:
 
 # Development Server Configuration
 server:
-  port: 8082
+  port: 8080
   error:
     include-message: always
     include-binding-errors: always
