@@ -257,3 +257,22 @@ docker build -t logistics-ai-agent:prod --target prod .
 # Deploy with compose
 docker-compose -f docker-compose.prod.yml up -d
 ```#
+#endpoints test:
+{
+  "clientId": "CLIENT_HAMBURG_001",
+  "clientName": "Hamburg Construction GmbH",
+  "deliveryAddress": "Baustelle Hafencity, Überseeallee 10, 20457 Hamburg, Germany",
+  "requestedDeliveryDate": "2025-08-12T10:00:00.000Z",
+  "items": [
+    {
+      "sku": "TILE-001",
+      "quantity": 100,
+      "unitPrice": 25.00
+    },
+    {
+      "sku": "CONC-001",
+      "quantity":  80,
+      "unitPrice": 50.00
+    }
+  ]
+}
