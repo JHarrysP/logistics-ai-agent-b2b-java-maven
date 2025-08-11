@@ -12,6 +12,10 @@ public class OrderStatsResponse {
     private long fulfilledOrders;
     private long deliveredOrders;
     private long cancelledOrders;
+    private long inTransitOrders;
+
+    public long getInTransitOrders() { return inTransitOrders; }
+    public void setInTransitOrders(long inTransitOrders) { this.inTransitOrders = inTransitOrders; }
     
     public OrderStatsResponse(long totalOrders, long receivedOrders, long validatedOrders,
                              long fulfilledOrders, long deliveredOrders, long cancelledOrders) {

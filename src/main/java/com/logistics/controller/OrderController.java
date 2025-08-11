@@ -4,7 +4,7 @@ import com.logistics.dto.*;
 import com.logistics.model.*;
 import com.logistics.repository.*;
 import com.logistics.service.LogisticsAIAgent;
-import com.logistics.service.NotificationService;
+import com.logistics.service.RealtimeNotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -25,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
- * REST Controller for order management operations
+ * Enhanced REST Controller for order management operations with WebSocket integration
  */
 @RestController
 @RequestMapping("/api/orders")
@@ -46,7 +46,7 @@ public class OrderController {
     private ShipmentRepository shipmentRepository;
 
     @Autowired
-    private NotificationService notificationService;
+    private RealtimeNotificationService notificationService;
 
     /**
      * Submit a new order for AI-powered processing
@@ -60,7 +60,7 @@ public class OrderController {
     @Transactional
     public ResponseEntity<OrderResponse> submitOrder(@Valid @RequestBody OrderRequest request) {
         try {
-            System.out.println("Received order submission: " + request);
+            System.out.println(" Received order submission: " + request);
 
             // Create order entity
             Order order = new Order(request.getClientId(), request.getClientName(),
@@ -81,7 +81,14 @@ public class OrderController {
 
             // Save order
             order = orderRepository.save(order);
-            System.out.println("Order saved with ID: " + order.getId());
+            System.out.println(" Order saved with ID: " + order.getId());
+
+            // Send real-time notification
+            notificationService.sendNewOrderNotification(
+                    order.getId(),
+                    order.getClientName(),
+                    order.getItems().size()
+            );
 
             // Process asynchronously with AI Agent
             CompletableFuture<String> processingResult = aiAgent.processOrder(order);
@@ -97,7 +104,7 @@ public class OrderController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            System.err.println("Error submitting order: " + e.getMessage());
+            System.err.println(" Error submitting order: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.badRequest()
                     .body(new OrderResponse(null, "Error submitting order: " + e.getMessage(),
@@ -113,7 +120,7 @@ public class OrderController {
             description = "Retrieve detailed status and tracking information for a specific order")
     @ApiResponse(responseCode = "200", description = "Order status retrieved successfully")
     @ApiResponse(responseCode = "404", description = "Order not found")
-    @Transactional(readOnly = true)  // KEY FIX: Add transaction to handle lazy loading
+    @Transactional(readOnly = true)
     public ResponseEntity<OrderStatusResponse> getOrderStatus(
             @Parameter(description = "Order ID", required = true) @PathVariable Long orderId) {
 
@@ -127,7 +134,7 @@ public class OrderController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            System.err.println("Error getting order status for order " + orderId + ": " + e.getMessage());
+            System.err.println(" Error getting order status for order " + orderId + ": " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
@@ -140,7 +147,7 @@ public class OrderController {
     @Operation(summary = "Get Client Orders",
             description = "Retrieve all orders for a specific client, ordered by date descending")
     @ApiResponse(responseCode = "200", description = "Client orders retrieved successfully")
-    @Transactional(readOnly = true)  // Add transaction for lazy loading
+    @Transactional(readOnly = true)
     public ResponseEntity<List<OrderStatusResponse>> getClientOrders(
             @Parameter(description = "Client ID", required = true) @PathVariable String clientId) {
 
@@ -153,7 +160,7 @@ public class OrderController {
             return ResponseEntity.ok(responses);
 
         } catch (Exception e) {
-            System.err.println("Error getting client orders for " + clientId + ": " + e.getMessage());
+            System.err.println(" Error getting client orders for " + clientId + ": " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
@@ -167,7 +174,7 @@ public class OrderController {
             description = "Retrieve all orders with a specific status")
     @ApiResponse(responseCode = "200", description = "Orders retrieved successfully")
     @ApiResponse(responseCode = "400", description = "Invalid status")
-    @Transactional(readOnly = true)  // Add transaction for lazy loading
+    @Transactional(readOnly = true)
     public ResponseEntity<List<OrderStatusResponse>> getOrdersByStatus(
             @Parameter(description = "Order Status", required = true) @PathVariable String status) {
 
@@ -182,7 +189,7 @@ public class OrderController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            System.err.println("Error getting orders by status " + status + ": " + e.getMessage());
+            System.err.println(" Error getting orders by status " + status + ": " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
@@ -197,7 +204,7 @@ public class OrderController {
     @ApiResponse(responseCode = "200", description = "Order cancelled successfully")
     @ApiResponse(responseCode = "404", description = "Order not found")
     @ApiResponse(responseCode = "400", description = "Cannot cancel order in current status")
-    @Transactional  // Add transaction for potential lazy loading
+    @Transactional
     public ResponseEntity<String> cancelOrder(
             @Parameter(description = "Order ID", required = true) @PathVariable Long orderId) {
 
@@ -213,15 +220,19 @@ public class OrderController {
                         .body("Cannot cancel order in status: " + order.getStatus().getDescription());
             }
 
+            OrderStatus oldStatus = order.getStatus();
             order.setStatus(OrderStatus.CANCELLED);
             orderRepository.save(order);
 
-            System.out.println("Order cancelled: " + orderId);
+            // Send real-time status update
+            notificationService.sendOrderStatusUpdate(orderId, oldStatus.toString(), "CANCELLED");
+
+            System.out.println(" Order cancelled: " + orderId);
 
             return ResponseEntity.ok("Order #" + orderId + " cancelled successfully");
 
         } catch (Exception e) {
-            System.err.println("Error cancelling order " + orderId + ": " + e.getMessage());
+            System.err.println(" Error cancelling order " + orderId + ": " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error cancelling order: " + e.getMessage());
@@ -254,6 +265,7 @@ public class OrderController {
                                 order.getStatus().getDescription());
             }
 
+            OrderStatus oldStatus = order.getStatus();
             order.setStatus(OrderStatus.DELIVERED);
             orderRepository.save(order);
 
@@ -266,7 +278,9 @@ public class OrderController {
                 shipmentRepository.save(shipment);
             }
 
-            // Send notifications
+            // Send real-time notifications
+            notificationService.sendOrderStatusUpdate(orderId, oldStatus.toString(), "DELIVERED");
+
             notificationService.sendNotification(order.getClientId(),
                     "Order #" + orderId + " has been delivered successfully. Thank you for your business!");
 
@@ -279,7 +293,7 @@ public class OrderController {
             return ResponseEntity.ok("Order #" + orderId + " marked as delivered successfully");
 
         } catch (Exception e) {
-            System.err.println("Error marking order as delivered " + orderId + ": " + e.getMessage());
+            System.err.println(" Error marking order as delivered " + orderId + ": " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error marking order as delivered: " + e.getMessage());
@@ -287,237 +301,7 @@ public class OrderController {
     }
 
     /**
-     * Mark order as rejected
-     */
-    @PostMapping("/{orderId}/reject")
-    @Operation(summary = "Reject Order",
-            description = "Reject an order with a reason")
-    @ApiResponse(responseCode = "200", description = "Order rejected")
-    @ApiResponse(responseCode = "404", description = "Order not found")
-    @ApiResponse(responseCode = "400", description = "Invalid status for rejection")
-    @Transactional
-    public ResponseEntity<String> rejectOrder(
-            @Parameter(description = "Order ID", required = true) @PathVariable Long orderId,
-            @Parameter(description = "Rejection reason") @RequestParam(required = false) String reason) {
-
-        try {
-            Order order = orderRepository.findById(orderId).orElse(null);
-            if (order == null) {
-                return ResponseEntity.notFound().build();
-            }
-
-            // Orders can be rejected if not yet delivered
-            if (order.getStatus() == OrderStatus.DELIVERED) {
-                return ResponseEntity.badRequest()
-                        .body("Cannot reject delivered order. Status: " + order.getStatus().getDescription());
-            }
-
-            String rejectionReason = reason != null && !reason.trim().isEmpty()
-                    ? reason : "Order rejected by system";
-
-            order.setStatus(OrderStatus.CANCELLED);
-            orderRepository.save(order);
-
-            // Cancel shipment if exists
-            List<Shipment> shipments = shipmentRepository.findByOrderId(orderId);
-            if (!shipments.isEmpty()) {
-                Shipment shipment = shipments.get(0);
-                shipment.setStatus(ShipmentStatus.CANCELLED);
-                shipmentRepository.save(shipment);
-            }
-
-            // Restore inventory if order was fulfilled
-            if (order.getStatus() == OrderStatus.FULFILLED ||
-                    order.getStatus() == OrderStatus.READY_FOR_PICKUP ||
-                    order.getStatus() == OrderStatus.IN_TRANSIT) {
-
-                for (OrderItem item : order.getItems()) {
-                    Product product = item.getProduct();
-                    product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
-                    productRepository.save(product);
-                    System.out.println(" Restored " + item.getQuantity() + " units of " + product.getName());
-                }
-            }
-
-            // Send notifications
-            notificationService.sendNotification(order.getClientId(),
-                    "Order #" + orderId + " has been rejected. Reason: " + rejectionReason +
-                            ". Please contact support for assistance.");
-
-            notificationService.sendInternalNotification("ORDER_MANAGEMENT",
-                    "Order #" + orderId + " rejected. Client: " + order.getClientName() +
-                            ", Reason: " + rejectionReason);
-
-            System.out.println(" Order rejected: " + orderId + " - " + rejectionReason);
-
-            return ResponseEntity.ok("Order #" + orderId + " rejected: " + rejectionReason);
-
-        } catch (Exception e) {
-            System.err.println("Error rejecting order " + orderId + ": " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error rejecting order: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Mark order as delayed
-     */
-    @PostMapping("/{orderId}/delay")
-    @Operation(summary = "Mark Order as Delayed",
-            description = "Mark an order as delayed with new estimated delivery")
-    @ApiResponse(responseCode = "200", description = "Order marked as delayed")
-    @ApiResponse(responseCode = "404", description = "Order not found")
-    @ApiResponse(responseCode = "400", description = "Invalid status for delay")
-    @Transactional
-    public ResponseEntity<String> markOrderDelayed(
-            @Parameter(description = "Order ID", required = true) @PathVariable Long orderId,
-            @Parameter(description = "New estimated delivery date")
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-            LocalDateTime newEstimatedDelivery,
-            @Parameter(description = "Delay reason")
-            @RequestParam(required = false) String reason) {
-
-        try {
-            Order order = orderRepository.findById(orderId).orElse(null);
-            if (order == null) {
-                return ResponseEntity.notFound().build();
-            }
-
-            // Orders can only be delayed if they are in transit or ready for pickup
-            if (order.getStatus() != OrderStatus.IN_TRANSIT &&
-                    order.getStatus() != OrderStatus.READY_FOR_PICKUP) {
-                return ResponseEntity.badRequest()
-                        .body("Cannot delay order in current status: " + order.getStatus().getDescription());
-            }
-
-            if (newEstimatedDelivery.isBefore(LocalDateTime.now())) {
-                return ResponseEntity.badRequest()
-                        .body("New estimated delivery date must be in the future");
-            }
-
-            String delayReason = reason != null && !reason.trim().isEmpty()
-                    ? reason : "Delivery delayed due to operational requirements";
-
-            // Update shipment with new estimated delivery
-            List<Shipment> shipments = shipmentRepository.findByOrderId(orderId);
-            if (!shipments.isEmpty()) {
-                Shipment shipment = shipments.get(0);
-                shipment.setEstimatedDelivery(newEstimatedDelivery);
-                shipmentRepository.save(shipment);
-            }
-
-            // Send notifications
-            notificationService.sendNotification(order.getClientId(),
-                    "Order #" + orderId + " delivery has been delayed. " +
-                            "New estimated delivery: " + newEstimatedDelivery +
-                            ". Reason: " + delayReason + ". We apologize for the inconvenience.");
-
-            notificationService.sendInternalNotification("LOGISTICS",
-                    "Order #" + orderId + " delayed. Client: " + order.getClientName() +
-                            ", New ETA: " + newEstimatedDelivery + ", Reason: " + delayReason);
-
-            System.out.println(" Order delayed: " + orderId + " - New ETA: " + newEstimatedDelivery);
-
-            return ResponseEntity.ok("Order #" + orderId + " marked as delayed. New estimated delivery: " +
-                    newEstimatedDelivery);
-
-        } catch (Exception e) {
-            System.err.println("Error marking order as delayed " + orderId + ": " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error marking order as delayed: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Update order status manually (admin function)
-     */
-    @PutMapping("/{orderId}/status/{newStatus}")
-    @Operation(summary = "Update Order Status",
-            description = "Manually update order status (admin function)")
-    @ApiResponse(responseCode = "200", description = "Order status updated")
-    @ApiResponse(responseCode = "404", description = "Order not found")
-    @ApiResponse(responseCode = "400", description = "Invalid status")
-    @Transactional
-    public ResponseEntity<String> updateOrderStatus(
-            @Parameter(description = "Order ID", required = true) @PathVariable Long orderId,
-            @Parameter(description = "New status", required = true) @PathVariable String newStatus,
-            @Parameter(description = "Update reason") @RequestParam(required = false) String reason) {
-
-        try {
-            Order order = orderRepository.findById(orderId).orElse(null);
-            if (order == null) {
-                return ResponseEntity.notFound().build();
-            }
-
-            OrderStatus currentStatus = order.getStatus();
-            OrderStatus targetStatus;
-
-            try {
-                targetStatus = OrderStatus.valueOf(newStatus.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                return ResponseEntity.badRequest()
-                        .body("Invalid status: " + newStatus + ". Valid statuses: " +
-                                java.util.Arrays.toString(OrderStatus.values()));
-            }
-
-            String updateReason = reason != null && !reason.trim().isEmpty()
-                    ? reason : "Status updated manually";
-
-            order.setStatus(targetStatus);
-            orderRepository.save(order);
-
-            // Update shipment status if applicable
-            List<Shipment> shipments = shipmentRepository.findByOrderId(orderId);
-            if (!shipments.isEmpty()) {
-                Shipment shipment = shipments.get(0);
-
-                switch (targetStatus) {
-                    case IN_TRANSIT:
-                        shipment.setStatus(ShipmentStatus.IN_TRANSIT);
-                        if (shipment.getActualPickup() == null) {
-                            shipment.setActualPickup(LocalDateTime.now());
-                        }
-                        break;
-                    case DELIVERED:
-                        shipment.setStatus(ShipmentStatus.DELIVERED);
-                        if (shipment.getActualDelivery() == null) {
-                            shipment.setActualDelivery(LocalDateTime.now());
-                        }
-                        break;
-                    case CANCELLED:
-                        shipment.setStatus(ShipmentStatus.CANCELLED);
-                        break;
-                }
-                shipmentRepository.save(shipment);
-            }
-
-            // Send notifications
-            notificationService.sendNotification(order.getClientId(),
-                    "Order #" + orderId + " status updated to: " + targetStatus.getDescription() +
-                            ". " + updateReason);
-
-            notificationService.sendInternalNotification("ORDER_MANAGEMENT",
-                    "Order #" + orderId + " status changed from " + currentStatus + " to " + targetStatus +
-                            ". Reason: " + updateReason);
-
-            System.out.println(" Order status updated: " + orderId + " - " +
-                    currentStatus + " -> " + targetStatus);
-
-            return ResponseEntity.ok("Order #" + orderId + " status updated from " +
-                    currentStatus + " to " + targetStatus);
-
-        } catch (Exception e) {
-            System.err.println("Error updating order status " + orderId + ": " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error updating order status: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Get order summary statistics
+     * Get order summary statistics with real-time updates
      */
     @GetMapping("/stats")
     @Operation(summary = "Get Order Statistics",
@@ -529,6 +313,7 @@ public class OrderController {
             long receivedOrders = orderRepository.countByStatus(OrderStatus.RECEIVED);
             long validatedOrders = orderRepository.countByStatus(OrderStatus.VALIDATED);
             long fulfilledOrders = orderRepository.countByStatus(OrderStatus.FULFILLED);
+            long inTransitOrders = orderRepository.countByStatus(OrderStatus.IN_TRANSIT);
             long deliveredOrders = orderRepository.countByStatus(OrderStatus.DELIVERED);
             long cancelledOrders = orderRepository.countByStatus(OrderStatus.CANCELLED);
 
@@ -537,10 +322,22 @@ public class OrderController {
                     deliveredOrders, cancelledOrders
             );
 
+            // Add additional stats for enhanced dashboard
+            stats.setInTransitOrders(inTransitOrders);
+
+            // Send real-time stats update
+            notificationService.sendStatsUpdate(java.util.Map.of(
+                    "totalOrders", totalOrders,
+                    "receivedOrders", receivedOrders,
+                    "inTransitOrders", inTransitOrders,
+                    "deliveredOrders", deliveredOrders,
+                    "cancelledOrders", cancelledOrders
+            ));
+
             return ResponseEntity.ok(stats);
 
         } catch (Exception e) {
-            System.err.println("Error getting order stats: " + e.getMessage());
+            System.err.println(" Error getting order stats: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
@@ -586,7 +383,7 @@ public class OrderController {
                                         item.getProduct().getLocation()
                                 );
                             } catch (Exception e) {
-                                System.err.println("Error creating OrderItemInfo for item " +
+                                System.err.println(" Error creating OrderItemInfo for item " +
                                         (item != null ? item.getId() : "null") + ": " + e.getMessage());
                                 return null;
                             }
@@ -619,14 +416,14 @@ public class OrderController {
                     response.setEstimatedDelivery(shipment.getEstimatedDelivery());
                 }
             } catch (Exception e) {
-                System.err.println("Error loading shipment info for order " + order.getId() + ": " + e.getMessage());
+                System.err.println(" Error loading shipment info for order " + order.getId() + ": " + e.getMessage());
                 // Continue without shipment info rather than failing
             }
 
             return response;
 
         } catch (Exception e) {
-            System.err.println("Error in buildOrderStatusResponse for order " +
+            System.err.println(" Error in buildOrderStatusResponse for order " +
                     (order != null ? order.getId() : "null") + ": " + e.getMessage());
             e.printStackTrace();
             throw new RuntimeException("Failed to build order status response", e);
