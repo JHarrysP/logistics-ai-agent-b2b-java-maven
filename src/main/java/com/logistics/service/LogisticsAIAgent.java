@@ -3,6 +3,8 @@ package com.logistics.service;
 import com.logistics.model.*;
 import com.logistics.repository.OrderRepository;
 import com.logistics.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Async;
@@ -16,6 +18,8 @@ import java.util.concurrent.CompletableFuture;
  */
 @Service
 public class LogisticsAIAgent {
+
+    private static final Logger log = LoggerFactory.getLogger(LogisticsAIAgent.class);
 
     @Autowired
     private OrderValidationAgent orderValidationAgent;
@@ -48,7 +52,7 @@ public class LogisticsAIAgent {
     @Transactional
     public CompletableFuture<String> processOrder(Order order) {
         try {
-            System.out.println(" AI Agent processing order: " + order.getId());
+            log.info("AI Agent processing order: {}", order.getId());
 
             // Send AI processing notification
             notificationService.sendAIAlert("LogisticsAIAgent", "Started processing order #" + order.getId(),
@@ -75,7 +79,7 @@ public class LogisticsAIAgent {
             notificationService.sendOrderStatusUpdate(order.getId(), oldStatus.toString(), "VALIDATED");
             notificationService.sendAIAlert("ValidationAgent", "Order validated successfully",
                     java.util.Map.of("orderId", order.getId()));
-            System.out.println(" Order validated: " + order.getId());
+            log.info("Order validated: {}", order.getId());
 
             // Step 2: Check Inventory
             InventoryCheckResult inventoryCheck = inventoryAgent.checkInventory(order);
@@ -97,7 +101,7 @@ public class LogisticsAIAgent {
             notificationService.sendOrderStatusUpdate(order.getId(), oldStatus.toString(), "INVENTORY_CHECKED");
             notificationService.sendAIAlert("InventoryAgent", "Inventory check passed",
                     java.util.Map.of("orderId", order.getId()));
-            System.out.println(" Inventory checked: " + order.getId());
+            log.info("Inventory checked for order: {}", order.getId());
 
             // Step 3: Fulfill Order (Reserve inventory)
             FulfillmentResult fulfillment = fulfillmentAgent.fulfillOrder(order);
@@ -116,13 +120,13 @@ public class LogisticsAIAgent {
             notificationService.sendOrderStatusUpdate(order.getId(), oldStatus.toString(), "FULFILLED");
             notificationService.sendAIAlert("FulfillmentAgent", "Order fulfilled - inventory reserved",
                     java.util.Map.of("orderId", order.getId(), "weight", order.getTotalWeight()));
-            System.out.println(" Order fulfilled: " + order.getId());
+            log.info("Order fulfilled: {}", order.getId());
 
             // Step 4: Generate Warehouse Instructions
             WarehouseInstructions instructions = warehouseAgent.generatePickingInstructions(order);
             notificationService.sendAIAlert("WarehouseAgent", "Picking instructions generated",
                     java.util.Map.of("orderId", order.getId(), "specialHandling", instructions.requiresSpecialHandling()));
-            System.out.println(" Warehouse instructions generated: " + order.getId());
+            log.info("Warehouse instructions generated for order: {}", order.getId());
 
             // Step 5: Schedule Shipment
             Shipment shipment = shippingAgent.scheduleShipment(order, instructions);
@@ -141,7 +145,7 @@ public class LogisticsAIAgent {
                             shipment.getScheduledPickup() + ". Truck: " + shipment.getTruckId() +
                             ". Estimated delivery: " + shipment.getEstimatedDelivery());
 
-            System.out.println(" Shipment scheduled: " + shipment.getId() + " for order: " + order.getId());
+            log.info("Shipment scheduled: {} for order: {}", shipment.getId(), order.getId());
 
             // Final AI completion notification
             notificationService.sendAIAlert("LogisticsAIAgent", "Order processing completed successfully",
@@ -152,8 +156,7 @@ public class LogisticsAIAgent {
                     "Order processed successfully by AI. Shipment ID: " + shipment.getId());
 
         } catch (Exception e) {
-            System.err.println(" Error processing order " + order.getId() + ": " + e.getMessage());
-            e.printStackTrace();
+            log.error("Error processing order {}: {}", order.getId(), e.getMessage(), e);
 
             // Update order status and send notifications
             OrderStatus oldStatus = order.getStatus();
@@ -194,11 +197,10 @@ public class LogisticsAIAgent {
             notificationService.sendAIAlert("StatusManager", "Status updated: " + oldStatus + " → " + newStatus,
                     java.util.Map.of("orderId", orderId, "reason", reason != null ? reason : "Manual update"));
 
-            System.out.println(" Order status updated: " + orderId + " - " + oldStatus + " → " + newStatus);
+            log.info("Order status updated: {} - {} → {}", orderId, oldStatus, newStatus);
 
         } catch (Exception e) {
-            System.err.println(" Error updating order status: " + e.getMessage());
-            e.printStackTrace();
+            log.error("Error updating order status: {}", e.getMessage(), e);
         }
     }
 

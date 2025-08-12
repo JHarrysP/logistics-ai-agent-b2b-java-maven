@@ -12,7 +12,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.http.HttpStatus;
+import java.util.ArrayList;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -24,6 +25,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/warehouse")
 @Tag(name = "Warehouse", description = "Warehouse Operations API - Manage picking, loading, and shipments")
 public class WarehouseController {
+
 
     @Autowired
     private ShipmentRepository shipmentRepository;
@@ -42,19 +44,26 @@ public class WarehouseController {
             description = "Retrieve all shipments scheduled for pickup")
     @Transactional(readOnly = true)
     public ResponseEntity<List<Shipment>> getPendingShipments() {
-        List<Shipment> shipments = shipmentRepository.findByStatus(ShipmentStatus.SCHEDULED);
-        return ResponseEntity.ok(shipments);
+        try {
+            List<Shipment> shipments = shipmentRepository.findByStatus(ShipmentStatus.SCHEDULED);
+            System.out.println(" Found " + shipments.size() + " pending shipments");
+            return ResponseEntity.ok(shipments);
+        } catch (Exception e) {
+            System.err.println("Error getting pending shipments: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ArrayList<>());
+        }
     }
 
+
     /**
-     * Get shipments scheduled for today
+     * Get shipments scheduled for today - FIXED
      */
     @GetMapping("/today-shipments")
-    @Operation(summary = "Get Today's Shipments",
-            description = "Retrieve all shipments scheduled for pickup today")
     @Transactional(readOnly = true)
     public ResponseEntity<List<Shipment>> getTodayShipments() {
-        List<Shipment> shipments = shipmentRepository.findShipmentsScheduledForDate(LocalDateTime.now());
+        List<Shipment> shipments = shipmentRepository.findShipmentsScheduledForToday();
         return ResponseEntity.ok(shipments);
     }
 
@@ -82,12 +91,20 @@ public class WarehouseController {
         shipment.setStatus(ShipmentStatus.LOADING);
         shipmentRepository.save(shipment);
 
+                // Update order status to LOADING
+        Order order = shipment.getOrder();
+        if (order != null && order.getStatus() == OrderStatus.READY_FOR_PICKUP) {
+            order.setStatus(OrderStatus.LOADING);
+            orderRepository.save(order);
+            System.out.println("Order status updated to LOADING: " + order.getId());
+        }
+
         notificationService.sendInternalNotification("WAREHOUSE",
                 "Loading started for shipment #" + shipmentId +
                         ", Order #" + shipment.getOrder().getId() +
                         ", Truck: " + shipment.getTruckId());
 
-        System.out.println("🔄 Loading started for shipment: " + shipmentId);
+        System.out.println("Loading started for shipment: " + shipmentId);
 
         return ResponseEntity.ok("Loading started for shipment #" + shipmentId);
     }
@@ -117,10 +134,13 @@ public class WarehouseController {
         shipment.setActualPickup(LocalDateTime.now());
         shipmentRepository.save(shipment);
 
-        // FIXED: Update order status and save explicitly
+        // Update order status
         Order order = shipment.getOrder();
-        order.setStatus(OrderStatus.READY_FOR_PICKUP);
-        orderRepository.save(order);
+        if (order != null && order.getStatus() == OrderStatus.LOADING) {
+            order.setStatus(OrderStatus.FULFILLED);
+            orderRepository.save(order);
+            System.out.println(" Order status updated to FULFILLED: " + order.getId());
+        }
 
         notificationService.sendNotification(order.getClientId(),
                 "Your order #" + order.getId() + " has been loaded and is ready for dispatch. " +
@@ -132,7 +152,7 @@ public class WarehouseController {
                         "Truck: " + shipment.getTruckId() +
                         ", Driver: " + shipment.getDriverId());
 
-        System.out.println("📦 Loading completed for shipment: " + shipmentId);
+        System.out.println(" Loading completed for shipment: " + shipmentId);
 
         return ResponseEntity.ok("Loading completed for shipment #" + shipmentId +
                 ". Truck is ready for departure.");
@@ -164,15 +184,17 @@ public class WarehouseController {
 
         // FIXED: Update order status and save explicitly
         Order order = shipment.getOrder();
-        order.setStatus(OrderStatus.IN_TRANSIT);
-        orderRepository.save(order);
+        if (order.getStatus() == OrderStatus.FULFILLED) {
+            order.setStatus(OrderStatus.IN_TRANSIT);
+            orderRepository.save(order);
+        }
 
         notificationService.sendNotification(order.getClientId(),
                 "Your order #" + order.getId() + " is now in transit. " +
                         "Truck: " + shipment.getTruckId() +
                         ". Estimated delivery: " + shipment.getEstimatedDelivery());
 
-        System.out.println("🚛 Shipment dispatched: " + shipmentId);
+        System.out.println("Shipment dispatched: " + shipmentId);
 
         return ResponseEntity.ok("Shipment #" + shipmentId + " dispatched and in transit");
     }
@@ -215,7 +237,7 @@ public class WarehouseController {
                 "Shipment #" + shipmentId + " delivered successfully. " +
                         "Order #" + order.getId() + " completed for " + order.getClientName());
 
-        System.out.println("✅ Shipment delivered: " + shipmentId);
+        System.out.println("Shipment delivered: " + shipmentId);
 
         return ResponseEntity.ok("Shipment #" + shipmentId + " marked as delivered successfully");
     }
@@ -273,7 +295,7 @@ public class WarehouseController {
                         ": " + problem + ". Client: " + order.getClientName() +
                         ", Contact required for resolution.");
 
-        System.out.println("⚠️ Delivery problem reported: " + shipmentId + " - " + problem);
+        System.out.println("Delivery problem reported: " + shipmentId + " - " + problem);
 
         return ResponseEntity.ok("Delivery problem reported for shipment #" + shipmentId);
     }
@@ -288,8 +310,16 @@ public class WarehouseController {
             description = "Retrieve shipments that are overdue for pickup")
     @Transactional(readOnly = true)
     public ResponseEntity<List<Shipment>> getOverdueShipments() {
-        List<Shipment> overdueShipments = shipmentRepository.findOverdueShipments();
-        return ResponseEntity.ok(overdueShipments);
+        try {
+            List<Shipment> overdueShipments = shipmentRepository.findOverdueShipments();
+            System.out.println(" Found " + overdueShipments.size() + " overdue shipments");
+            return ResponseEntity.ok(overdueShipments);
+        } catch (Exception e) {
+            System.err.println("Error getting overdue shipments: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ArrayList<>());
+        }
     }
 
     /**
@@ -303,7 +333,100 @@ public class WarehouseController {
         List<Shipment> specialShipments = shipmentRepository.findShipmentsRequiringSpecialHandling();
         return ResponseEntity.ok(specialShipments);
     }
+    // Add these methods to your WarehouseController.java
 
+    /**
+     * Mark order as delayed with a new delivery date
+     */
+    @PostMapping("/orders/{orderId}/delay")
+    @Operation(summary = "Mark Order as Delayed",
+            description = "Mark an order as delayed with a new estimated delivery date")
+    @Transactional
+    public ResponseEntity<String> markOrderDelayed(
+            @Parameter(description = "Order ID", required = true) @PathVariable Long orderId,
+            @Parameter(description = "New estimated delivery date")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime newEstimatedDelivery,
+            @Parameter(description = "Reason for delay") @RequestParam(required = false) String reason) {
+
+        try {
+            Order order = orderRepository.findById(orderId).orElse(null);
+            if (order == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            // Update delivery date if order has a shipment
+            List<Shipment> shipments = shipmentRepository.findByOrderId(orderId);
+            if (!shipments.isEmpty()) {
+                Shipment shipment = shipments.get(0);
+                shipment.setEstimatedDelivery(newEstimatedDelivery);
+                shipmentRepository.save(shipment);
+            }
+
+            String message = "Order #" + orderId + " marked as delayed";
+            if (reason != null && !reason.trim().isEmpty()) {
+                message += ". Reason: " + reason;
+            }
+            message += ". New estimated delivery: " + newEstimatedDelivery;
+
+            notificationService.sendNotification(order.getClientId(), message);
+
+            System.out.println("Order delayed: " + orderId + " - " + reason);
+
+            return ResponseEntity.ok(message);
+
+        } catch (Exception e) {
+            System.err.println("Error marking order as delayed " + orderId + ": " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error marking order as delayed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Reject/Cancel an order with reason
+     */
+    @PostMapping("/orders/{orderId}/reject")
+    @Operation(summary = "Reject Order",
+            description = "Reject/cancel an order with a specified reason")
+    @Transactional
+    public ResponseEntity<String> rejectOrder(
+            @Parameter(description = "Order ID", required = true) @PathVariable Long orderId,
+            @Parameter(description = "Rejection reason") @RequestParam(required = false) String reason) {
+
+        try {
+            Order order = orderRepository.findById(orderId).orElse(null);
+            if (order == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            // Check if order can be rejected
+            if (order.getStatus() == OrderStatus.DELIVERED) {
+                return ResponseEntity.badRequest()
+                        .body("Cannot reject order - already delivered");
+            }
+
+            OrderStatus oldStatus = order.getStatus();
+            order.setStatus(OrderStatus.CANCELLED);
+            orderRepository.save(order);
+
+            String message = "Order #" + orderId + " has been rejected/cancelled";
+            if (reason != null && !reason.trim().isEmpty()) {
+                message += ". Reason: " + reason;
+            }
+
+            notificationService.sendNotification(order.getClientId(), message);
+
+            System.out.println("Order rejected: " + orderId + " - " + reason);
+
+            return ResponseEntity.ok("Order #" + orderId + " rejected successfully");
+
+        } catch (Exception e) {
+            System.err.println("Error rejecting order " + orderId + ": " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error rejecting order: " + e.getMessage());
+        }
+    }
     /**
      * Get failed deliveries
      */

@@ -24,7 +24,7 @@ public class FulfillmentAgent {
      */
     @Transactional
     public FulfillmentResult fulfillOrder(Order order) {
-        System.out.println("🎯 Fulfilling order: " + order.getId());
+        System.out.println("Fulfilling order: " + order.getId());
         
         try {
             // Reserve inventory for each item
@@ -43,7 +43,7 @@ public class FulfillmentAgent {
                 product.setStockQuantity(product.getStockQuantity() - item.getQuantity());
                 productRepository.save(product);
                 
-                System.out.println("📦 Reserved " + item.getQuantity() + " units of " + product.getName());
+                System.out.println("Reserved " + item.getQuantity() + " units of " + product.getName());
             }
             
             return new FulfillmentResult(true, "Order fulfilled successfully");

@@ -2,6 +2,8 @@ package com.logistics.service;
 
 import com.logistics.model.*;
 import com.logistics.repository.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -37,27 +39,52 @@ public class AIAutomationService {
      * AI Agent: Autonomous Order Monitoring
      * Runs every 2 minutes to check for stuck orders
      */
+    private static final Logger log = LoggerFactory.getLogger(AIAutomationService.class);
+
     @Scheduled(fixedRate = 120000) // Every 2 minutes
     @Transactional
     public void autonomousOrderMonitoring() {
-        System.out.println("🤖 AI Agent: Running autonomous order monitoring...");
+        log.info("AI Agent: Starting autonomous order monitoring cycle");
 
-        // Find orders stuck in processing stages
-        List<Order> stuckOrders = findStuckOrders();
+        try {
+            List<Order> stuckOrders = findStuckOrders();
 
-        for (Order order : stuckOrders) {
-            System.out.println("🚨 AI detected stuck order: " + order.getId() + " in status " + order.getStatus());
-
-            // AI decision: Auto-advance or escalate based on business rules
-            if (shouldAutoAdvanceOrder(order)) {
-                autoAdvanceOrderStatus(order);
-            } else {
-                escalateStuckOrder(order);
+            if (stuckOrders.isEmpty()) {
+                log.debug("No stuck orders found during monitoring cycle");
+                return;
             }
-        }
 
-        // Check for overdue deliveries
-        checkOverdueDeliveries();
+            log.info("Found {} stuck orders requiring attention", stuckOrders.size());
+
+            for (Order order : stuckOrders) {
+                try {
+                    if (order == null || order.getId() == null) {
+                        log.warn("Skipping null or invalid order during stuck order processing");
+                        continue;
+                    }
+
+                    log.warn("AI detected stuck order: {} in status {} - processing time exceeded threshold", 
+                            order.getId(), order.getStatus());
+
+                    if (shouldAutoAdvanceOrder(order)) {
+                        autoAdvanceOrderStatus(order);
+                        log.info("Successfully auto-advanced stuck order: {}", order.getId());
+                    } else {
+                        escalateStuckOrder(order);
+                        log.warn("Escalated stuck order {} for manual intervention", order.getId());
+                    }
+                } catch (Exception orderEx) {
+                    log.error("Error processing stuck order {}: {}", 
+                        (order != null ? order.getId() : "unknown"), orderEx.getMessage(), orderEx);
+                }
+            }
+
+            checkOverdueDeliveries();
+            log.info("Completed autonomous order monitoring cycle");
+
+        } catch (Exception e) {
+            log.error("Critical error in autonomous order monitoring: {}", e.getMessage(), e);
+        }
     }
 
     /**
@@ -67,26 +94,55 @@ public class AIAutomationService {
     @Scheduled(fixedRate = 300000) // Every 5 minutes
     @Transactional
     public void predictiveDeliveryAdjustment() {
-        System.out.println("📊 AI Agent: Running predictive delivery time adjustment...");
+        System.out.println("AI Agent: Running predictive delivery time adjustment...");
 
-        List<Shipment> activeShipments = shipmentRepository.findShipmentsInTransit();
+        try {
+            List<Shipment> activeShipments = shipmentRepository.findShipmentsInTransit();
 
-        for (Shipment shipment : activeShipments) {
-            LocalDateTime newEstimate = calculatePredictiveDeliveryTime(shipment);
+            for (Shipment shipment : activeShipments) {
+                try {
+                    // Add null check and error handling
+                    if (shipment == null || shipment.getOrder() == null) {
+                        System.err.println("Skipping shipment with null order data");
+                        continue;
+                    }
 
-            // If significant change detected, update and notify
-            if (isSignificantTimeChange(shipment.getEstimatedDelivery(), newEstimate)) {
-                shipment.setEstimatedDelivery(newEstimate);
-                shipmentRepository.save(shipment);
+                    LocalDateTime newEstimate = calculatePredictiveDeliveryTime(shipment);
 
-                notificationService.sendNotification(
-                        shipment.getOrder().getClientId(),
-                        "AI Update: Delivery time for order #" + shipment.getOrder().getId() +
-                                " updated to " + newEstimate + " based on real-time conditions."
-                );
+                    // If significant change detected, update and notify
+                    if (isSignificantTimeChange(shipment.getEstimatedDelivery(), newEstimate)) {
+                        shipment.setEstimatedDelivery(newEstimate);
+                        shipmentRepository.save(shipment);
 
-                System.out.println("🔮 AI updated delivery estimate for shipment " + shipment.getId());
+                        // Safe access to order properties with error handling
+                        String clientId = null;
+                        Long orderId = null;
+                        try {
+                            clientId = shipment.getOrder().getClientId();
+                            orderId = shipment.getOrder().getId();
+                        } catch (Exception e) {
+                            System.err.println("Error accessing order data for shipment " + shipment.getId() + ": " + e.getMessage());
+                            continue;
+                        }
+
+                        if (clientId != null && orderId != null) {
+                            notificationService.sendNotification(
+                                    clientId,
+                                    "AI Update: Delivery time for order #" + orderId +
+                                            " updated to " + newEstimate + " based on real-time conditions."
+                            );
+                        }
+
+                        System.out.println("AI updated delivery estimate for shipment " + shipment.getId());
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error processing shipment " + shipment.getId() + ": " + e.getMessage());
+                    // Continue with next shipment
+                }
             }
+        } catch (Exception e) {
+            System.err.println("Error in predictive delivery adjustment: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -97,7 +153,7 @@ public class AIAutomationService {
     @Scheduled(fixedRate = 3600000) // Every hour
     @Transactional
     public void intelligentInventoryReordering() {
-        System.out.println("📦 AI Agent: Running intelligent inventory analysis...");
+        System.out.println("AI Agent: Running intelligent inventory analysis...");
 
         List<Product> lowStockProducts = productRepository.findByStockQuantityLessThan(50);
 
@@ -106,7 +162,7 @@ public class AIAutomationService {
             int reorderQuantity = calculateOptimalReorderQuantity(product, predictedDemand);
 
             if (reorderQuantity > 0) {
-                // Simulate reorder (in real system, would integrate with suppliers)
+                // Simulate reorder (in a real system, would integrate with suppliers)
                 product.setStockQuantity(product.getStockQuantity() + reorderQuantity);
                 productRepository.save(product);
 
@@ -114,7 +170,7 @@ public class AIAutomationService {
                         "AI Auto-reorder: " + reorderQuantity + " units of " + product.getName() +
                                 " (SKU: " + product.getSku() + ") - Predicted demand: " + predictedDemand);
 
-                System.out.println("🧠 AI triggered reorder: " + product.getSku() + " +" + reorderQuantity);
+                System.out.println("AI triggered reorder: " + product.getSku() + " +" + reorderQuantity);
             }
         }
     }
@@ -126,7 +182,7 @@ public class AIAutomationService {
     @Scheduled(fixedRate = 600000) // Every 10 minutes
     @Transactional
     public void anomalyDetection() {
-        System.out.println("🔍 AI Agent: Running anomaly detection...");
+        System.out.println("AI Agent: Running anomaly detection...");
 
         // Detect unusually long processing times
         List<Order> suspiciousOrders = orderRepository.findAll().stream()
@@ -153,7 +209,7 @@ public class AIAutomationService {
     @Scheduled(fixedRate = 900000) // Every 15 minutes
     @Transactional
     public void dynamicRouteOptimization() {
-        System.out.println("🗺️ AI Agent: Running dynamic route optimization...");
+        System.out.println("AI Agent: Running dynamic route optimization...");
 
         // Group shipments by truck and optimize routes
         Map<String, List<Shipment>> shipmentsByTruck = shipmentRepository.findShipmentsInTransit()
@@ -188,6 +244,9 @@ public class AIAutomationService {
             case RECEIVED:
                 // Auto-advance if order is simple (small, standard products)
                 return order.getTotalWeight() < 100 && order.getItems().size() <= 3;
+            case SCHEDULED:
+                // Auto-advance scheduled orders after reasonable time
+                return true; // Most scheduled orders can be advanced to validation
             case VALIDATED:
                 // Auto-advance if inventory is clearly available
                 return order.getItems().stream().allMatch(item ->
@@ -201,6 +260,7 @@ public class AIAutomationService {
         }
     }
 
+
     private void autoAdvanceOrderStatus(Order order) {
         OrderStatus newStatus = getNextStatus(order.getStatus());
         if (newStatus != null) {
@@ -211,13 +271,14 @@ public class AIAutomationService {
                     "AI auto-advanced order #" + order.getId() + " from " +
                             order.getStatus() + " to " + newStatus);
 
-            System.out.println("🤖 AI auto-advanced order " + order.getId() + " to " + newStatus);
+            System.out.println("AI auto-advanced order " + order.getId() + " to " + newStatus);
         }
     }
 
     private OrderStatus getNextStatus(OrderStatus current) {
         switch (current) {
-            case RECEIVED: return OrderStatus.VALIDATED;
+            case RECEIVED: return OrderStatus.SCHEDULED;
+            case SCHEDULED: return OrderStatus.VALIDATED;  // Add this case
             case VALIDATED: return OrderStatus.INVENTORY_CHECKED;
             case INVENTORY_CHECKED: return OrderStatus.FULFILLED;
             case FULFILLED: return OrderStatus.READY_FOR_PICKUP;
@@ -347,7 +408,7 @@ public class AIAutomationService {
                 shipment.setEstimatedDelivery(newEstimate);
                 shipmentRepository.save(shipment);
 
-                System.out.println("🗺️ AI optimized route for truck " + truckId +
+                System.out.println("AI optimized route for truck " + truckId +
                         " - Updated delivery time for shipment " + shipment.getId());
             }
         }
@@ -370,7 +431,7 @@ public class AIAutomationService {
                         " delivery has been rescheduled to " + newDelivery + " due to logistics optimization."
         );
 
-        System.out.println("🤖 AI auto-rescheduled delivery for shipment " + shipment.getId());
+        System.out.println("AI auto-rescheduled delivery for shipment " + shipment.getId());
     }
 
     private void escalateOverdueDelivery(Shipment shipment) {
@@ -381,10 +442,12 @@ public class AIAutomationService {
     }
 
     private int getExpectedProcessingTime(OrderStatus status) {
-        // Expected time in hours for each status - FIXED for Java 11
+        // Expected time in hours for each status
         switch (status) {
             case RECEIVED:
                 return 2;
+            case SCHEDULED:
+                return 1;  // Add expected processing time for SCHEDULED status
             case VALIDATED:
                 return 1;
             case INVENTORY_CHECKED:
@@ -400,8 +463,9 @@ public class AIAutomationService {
         }
     }
 
+
     private Long getNormalDailyDemand(String category) {
-        // Historical normal demand (would come from analytics in real system) - FIXED for Java 11
+        // Historical normal demand (would come from analytics in a real system) - FIXED for Java 11
         switch (category) {
             case "TILES":
                 return 200L;

@@ -23,19 +23,19 @@ public class ShippingAgent {
      * Schedule shipment using AI-driven optimization
      */
     public Shipment scheduleShipment(Order order, WarehouseInstructions instructions) {
-        System.out.println("🚛 Scheduling shipment for order: " + order.getId());
+        System.out.println("Scheduling shipment for order: " + order.getId());
         
         // AI-driven truck selection
         String truckId = selectOptimalTruck(order);
-        System.out.println("🚚 Selected truck: " + truckId);
+        System.out.println("Selected truck: " + truckId);
         
         // AI-driven driver assignment
         String driverId = assignOptimalDriver(order, truckId);
-        System.out.println("👨‍💼 Assigned driver: " + driverId);
+        System.out.println("Assigned driver: " + driverId);
         
         // AI-calculated optimal pickup time
         LocalDateTime scheduledPickup = calculateOptimalPickupTime(order, instructions);
-        System.out.println("⏰ Scheduled pickup: " + scheduledPickup);
+        System.out.println("Scheduled pickup: " + scheduledPickup);
         
         // Create shipment
         Shipment shipment = new Shipment(order, truckId, driverId, scheduledPickup);
@@ -46,7 +46,7 @@ public class ShippingAgent {
         LocalDateTime estimatedDelivery = calculateEstimatedDelivery(scheduledPickup, order);
         shipment.setEstimatedDelivery(estimatedDelivery);
         
-        System.out.println("📅 Estimated delivery: " + estimatedDelivery);
+        System.out.println("Estimated delivery: " + estimatedDelivery);
         
         return shipmentRepository.save(shipment);
     }

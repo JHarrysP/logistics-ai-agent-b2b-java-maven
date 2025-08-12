@@ -9,6 +9,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -32,6 +34,8 @@ import java.util.stream.Collectors;
 @Validated
 @Tag(name = "Orders", description = "Order Management API - Submit, track, and manage B2B logistics orders")
 public class OrderController {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderController.class);
 
     @Autowired
     private LogisticsAIAgent aiAgent;
@@ -60,7 +64,7 @@ public class OrderController {
     @Transactional
     public ResponseEntity<OrderResponse> submitOrder(@Valid @RequestBody OrderRequest request) {
         try {
-            System.out.println(" Received order submission: " + request);
+            log.info("Received order submission from client: {}", request.getClientId());
 
             // Create order entity
             Order order = new Order(request.getClientId(), request.getClientName(),
@@ -81,7 +85,7 @@ public class OrderController {
 
             // Save order
             order = orderRepository.save(order);
-            System.out.println(" Order saved with ID: " + order.getId());
+            log.info("Order saved with ID: {}", order.getId());
 
             // Send real-time notification
             notificationService.sendNewOrderNotification(
@@ -104,8 +108,7 @@ public class OrderController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            System.err.println(" Error submitting order: " + e.getMessage());
-            e.printStackTrace();
+            log.error("Error submitting order: {}", e.getMessage(), e);
             return ResponseEntity.badRequest()
                     .body(new OrderResponse(null, "Error submitting order: " + e.getMessage(),
                             "ERROR", null));
@@ -113,7 +116,11 @@ public class OrderController {
     }
 
     /**
-     * Get detailed order status and tracking information
+     * Retrieves the current status and tracking information of a specific order.
+     *
+     * @param orderId the unique identifier of the order to retrieve the status for
+     * @return a ResponseEntity containing an OrderStatusResponse if the order is found,
+     *         or a 404 Not Found response if the order does not exist
      */
     @GetMapping("/{orderId}/status")
     @Operation(summary = "Get Order Status",
@@ -139,7 +146,49 @@ public class OrderController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+    // Add these methods to your OrderController.java
 
+    @PostMapping("/{orderId}/delay")
+    @Transactional
+    public ResponseEntity<String> markOrderDelayed(
+            @PathVariable Long orderId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime newEstimatedDelivery,
+            @RequestParam(required = false) String reason) {
+
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) return ResponseEntity.notFound().build();
+
+        List<Shipment> shipments = shipmentRepository.findByOrderId(orderId);
+        if (!shipments.isEmpty()) {
+            shipments.get(0).setEstimatedDelivery(newEstimatedDelivery);
+            shipmentRepository.save(shipments.get(0));
+        }
+
+        String message = "Order #" + orderId + " delayed. New delivery: " + newEstimatedDelivery;
+        if (reason != null) message += ". Reason: " + reason;
+
+        notificationService.sendNotification(order.getClientId(), message);
+        return ResponseEntity.ok(message);
+    }
+
+    @PostMapping("/{orderId}/reject")
+    @Transactional
+    public ResponseEntity<String> rejectOrder(
+            @PathVariable Long orderId,
+            @RequestParam(required = false) String reason) {
+
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) return ResponseEntity.notFound().build();
+
+        order.setStatus(OrderStatus.CANCELLED);
+        orderRepository.save(order);
+
+        String message = "Order #" + orderId + " rejected";
+        if (reason != null) message += ". Reason: " + reason;
+
+        notificationService.sendNotification(order.getClientId(), message);
+        return ResponseEntity.ok(message);
+    }
     /**
      * Get all orders for a specific client
      */
@@ -299,7 +348,7 @@ public class OrderController {
                     .body("Error marking order as delivered: " + e.getMessage());
         }
     }
-
+    
     /**
      * Get order summary statistics with real-time updates
      */

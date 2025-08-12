@@ -29,23 +29,18 @@ public class OrderValidationAgent {
             return new ValidationResult(false, "Invalid delivery address");
         }
         
-        // Check delivery date is in future (at least 1 day advance notice)
-        if (order.getRequestedDeliveryDate().isBefore(LocalDateTime.now().plusDays(1))) {
-            return new ValidationResult(false, "Delivery date must be at least 1 day in advance");
+        // Check delivery date is not in the past (allow same day delivery)
+        if (order.getRequestedDeliveryDate().isBefore(LocalDateTime.now().toLocalDate().atStartOfDay())) {
+            return new ValidationResult(false, "Delivery date cannot be in the past");
         }
-        
+
         // Validate client information
         if (order.getClientId() == null || order.getClientId().trim().isEmpty()) {
             return new ValidationResult(false, "Client ID is required");
         }
-        
+
         if (order.getClientName() == null || order.getClientName().trim().isEmpty()) {
             return new ValidationResult(false, "Client name is required");
-        }
-        
-        // AI-driven validation: Check for suspicious patterns
-        if (order.getItems().size() > 50) {
-            return new ValidationResult(false, "Order too large - maximum 50 items per order");
         }
         
         // Validate delivery address format (basic check for German addresses)

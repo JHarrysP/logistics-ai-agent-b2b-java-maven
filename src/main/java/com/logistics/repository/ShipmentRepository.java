@@ -52,10 +52,20 @@ public interface ShipmentRepository extends JpaRepository<Shipment, Long> {
     }
 
     /**
-     * Find shipments scheduled for today
+     * Find shipments scheduled for today - FIXED QUERY
      */
-    @Query("SELECT s FROM Shipment s WHERE DATE(s.scheduledPickup) = DATE(:date)")
-    List<Shipment> findShipmentsScheduledForDate(@Param("date") LocalDateTime date);
+    @Query("SELECT s FROM Shipment s WHERE s.scheduledPickup >= :startOfDay AND s.scheduledPickup < :endOfDay")
+    List<Shipment> findShipmentsScheduledForDate(@Param("startOfDay") LocalDateTime startOfDay, @Param("endOfDay") LocalDateTime endOfDay);
+
+    /**
+     * Convenience method to find today's shipments
+     */
+    default List<Shipment> findShipmentsScheduledForToday() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime startOfDay = now.toLocalDate().atStartOfDay();
+        LocalDateTime endOfDay = startOfDay.plusDays(1);
+        return findShipmentsScheduledForDate(startOfDay, endOfDay);
+    }
 
     /**
      * Find shipments requiring special handling

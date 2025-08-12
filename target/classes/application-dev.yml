@@ -1,48 +1,85 @@
 # Development Environment Configuration
 spring:
+  # Graceful shutdown configuration
+  lifecycle:
+    timeout-per-shutdown-phase: 45s
+
   datasource:
-    url: jdbc:h2:mem:logistics;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    url: jdbc:h2:mem:logistics;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
     driver-class-name: org.h2.Driver
     username: sa
     password: ""
-    generate-unique-name: false  # This is the key line!
-    # Ensure connection validation
+    generate-unique-name: false
+    # Enhanced connection validation and lifecycle management
     hikari:
       connection-test-query: SELECT 1
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+      initialization-fail-timeout: -1
+      validate-on-migrate: true
+      auto-commit: false
+      pool-name: LogisticsHikariCP
+      register-mbeans: true
 
-  # JPA Development Settings
+  # FIXED JPA Development Settings - Removed invalid connection handling mode
   jpa:
     hibernate:
-      ddl-auto:
+      ddl-auto: create-drop
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
     show-sql: true
     properties:
       hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
         format_sql: true
         use_sql_comments: true
         generate_statistics: true
-    # This ensures SQL runs AFTER Hibernate creates tables
+        jdbc:
+          batch_size: 10
+          fetch_size: 50
+        order_inserts: true
+        order_updates: true
+        current_session_context_class: thread
+        enable_lazy_load_no_trans: false
     defer-datasource-initialization: true
+    open-in-view: false
 
   # H2 Console enabled for development
   h2:
     console:
       enabled: true
       settings:
-        web-allow-others: true # Allow remote connections in dev
+        web-allow-others: true
+      path: /h2-console
 
-  # DevTools Configuration
+  # DevTools Configuration - COMPLETELY DISABLED
   devtools:
     restart:
-      enabled: true
-      additional-paths: src/main/java
+      enabled: false
     livereload:
-      enabled: true
+      enabled: false
+    add-properties: false
 
-  # SQL Initialization - MOVED UNDER SPRING SECTION
+  # SQL Initialization
   sql:
     init:
       mode: always
       continue-on-error: false
+
+  # Add task execution shutdown configuration
+  task:
+    execution:
+      shutdown:
+        await-termination: true
+        await-termination-period: 30s
+    scheduling:
+      pool:
+        size: 5
+      shutdown:
+        await-termination: true
+        await-termination-period: 30s
 
 # Development Logging
 logging:
@@ -52,13 +89,26 @@ logging:
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
     org.springframework.web: DEBUG
-    org.springframework.security: DEBUG
+    org.springframework.context.support.DefaultLifecycleProcessor: DEBUG
+    org.springframework.boot.web.embedded.tomcat.GracefulShutdown: DEBUG
+    org.springframework.scheduling: DEBUG
+    org.h2: WARN
+    com.zaxxer.hikari: INFO
   pattern:
-    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
 
 # Development Server Configuration
 server:
   port: 8080
+  shutdown: graceful
+  servlet:
+    context-path: /
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+    connection-timeout: 60000
+    keep-alive-timeout: 30000
   error:
     include-message: always
     include-binding-errors: always
@@ -77,7 +127,7 @@ springdoc:
 app:
   logistics:
     ai-agent:
-      processing-timeout: 60 # Shorter timeout for development
+      processing-timeout: 60
       max-retry-attempts: 1
       notification-enabled: true
     warehouse:
@@ -85,12 +135,12 @@ app:
       debug-instructions: true
     shipping:
       mock-delivery-enabled: true
-      accelerated-processing: true # Faster processing for development
+      accelerated-processing: true
     notifications:
       console-output: true
       mock-external-services: true
 
-# Development CORS Configuration (Allow all origins)
+# Development CORS Configuration
 cors:
   allowed-origins: "*"
   allowed-methods: "*"
@@ -106,3 +156,9 @@ management:
   endpoint:
     health:
       show-details: always
+      show-components: always
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true

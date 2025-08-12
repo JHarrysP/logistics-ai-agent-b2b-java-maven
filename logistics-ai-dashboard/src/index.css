@@ -1,0 +1,102 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+
+  color-scheme: dark;
+  color: #E6EDF3;
+  background-color: #0D1117;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: #0D1117;
+  color: #E6EDF3;
+  min-height: 100vh;
+}
+
+a {
+  font-weight: 500;
+  color: #10A37F;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+a:hover {
+  color: #0EA5E9;
+}
+
+.MuiCard-root {
+  background-color: #161B22 !important;
+  border: 1px solid #21262D !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+.MuiTextField-root .MuiOutlinedInput-root {
+  background-color: #0D1117 !important;
+  border-radius: 8px !important;
+}
+
+.MuiTextField-root .MuiOutlinedInput-root fieldset {
+  border-color: #21262D !important;
+}
+
+.MuiTextField-root .MuiOutlinedInput-root:hover fieldset {
+  border-color: #30363D !important;
+}
+
+.MuiTextField-root .MuiOutlinedInput-root.Mui-focused fieldset {
+  border-color: #10A37F !important;
+}
+
+.MuiTextField-root .MuiInputLabel-root {
+  color: #8B949E !important;
+}
+
+.MuiTextField-root .MuiOutlinedInput-input {
+  color: #E6EDF3 !important;
+}
+
+.MuiButton-contained {
+  background-color: #10A37F !important;
+  border-radius: 8px !important;
+  text-transform: none !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+.MuiButton-contained:hover {
+  background-color: #0EA5E9 !important;
+  box-shadow: none !important;
+}
+
+.MuiTableContainer-root {
+  background-color: #161B22 !important;
+  border: 1px solid #21262D !important;
+  border-radius: 12px !important;
+}
+
+.MuiTable-root {
+  background-color: transparent !important;
+}
+
+.MuiTableHead-root .MuiTableCell-root {
+  background-color: #0D1117 !important;
+  color: #E6EDF3 !important;
+  border-bottom: 1px solid #21262D !important;
+  font-weight: 600 !important;
+}
+
+.MuiTableBody-root .MuiTableCell-root {
+  color: #E6EDF3 !important;
+  border-bottom: 1px solid #21262D !important;
+}

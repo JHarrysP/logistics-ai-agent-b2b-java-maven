@@ -1,0 +1,51 @@
+.dark-theme {
+  background-color: #0D1117;
+  color: #E6EDF3;
+}
+
+.openai-card {
+  background: #161B22;
+  border: 1px solid #21262D;
+  border-radius: 12px;
+  transition: border-color 0.2s ease;
+}
+
+.openai-card:hover {
+  border-color: #30363D;
+}
+
+.openai-input {
+  background: #0D1117;
+  border: 1px solid #21262D;
+  border-radius: 8px;
+  color: #E6EDF3;
+  padding: 12px 16px;
+  transition: border-color 0.2s ease;
+}
+
+.openai-input:focus {
+  border-color: #10A37F;
+  outline: none;
+}
+
+.openai-button {
+  background: #10A37F;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-weight: 600;
+  padding: 12px 24px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.openai-button:hover {
+  background: #0EA5E9;
+}
+
+.status-chip {
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}

@@ -5,14 +5,18 @@ import com.logistics.dto.OrderRequest;
 import com.logistics.model.Product;
 import com.logistics.repository.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import org.springframework.web.client.RestTemplate;
+
 
 /**
  * Mock Client Service for generating realistic test data and order patterns
@@ -41,6 +45,8 @@ public class MockClientService {
             new MockClient("CLI_HAM_003", "Hamburg Port Logistics", "Speicherstadt Warehouse District, 20457 Hamburg, Germany", "LOGISTICS"),
             new MockClient("CLI_BRE_001", "Bremen Maritime Construction", "Weser Riverfront Development, 28195 Bremen, Germany", "MARITIME")
     );
+    @Autowired
+    private RestTemplate restTemplate;
 
     /**
      * Generate realistic orders during business hours
@@ -52,7 +58,50 @@ public class MockClientService {
             generateRandomOrder("BUSINESS_HOURS");
         }
     }
+    // Add this method to MockClientService.java for testing overdue shipments
 
+    /**
+     * Generate test data for overdue shipments (for testing purposes)
+     */
+    @PostConstruct
+    public void generateTestData() {
+        // Only generate test data in development environment
+        if (!"dev".equals(System.getProperty("spring.profiles.active"))) {
+            return;
+        }
+
+        try {
+            // Create some overdue shipments for testing
+            generateOverdueShipmentData();
+            generateTodaysShipmentData();
+        } catch (Exception e) {
+            System.err.println("Error generating test data: " + e.getMessage());
+        }
+    }
+
+    private void generateOverdueShipmentData() {
+        // This would create test orders and shipments that are overdue
+        System.out.println(" Generating test data for overdue shipments...");
+
+        // In a real scenario, you'd create orders through the normal process
+        // For testing, you can manually create orders via the dashboard
+        // and then use SQL to backdate some shipments:
+
+    /*
+    -- Execute this SQL in H2 console to create overdue shipments for testing:
+
+    UPDATE shipments
+    SET scheduled_pickup = DATEADD('HOUR', -25, CURRENT_TIMESTAMP),
+        estimated_delivery = DATEADD('HOUR', -1, CURRENT_TIMESTAMP)
+    WHERE id IN (SELECT TOP 2 id FROM shipments WHERE status = 'SCHEDULED');
+
+    -- This will make some shipments appear overdue
+    */
+    }
+
+    private void generateTodaysShipmentData() {
+        System.out.println(" Test data ready - create some orders through the dashboard to see today's shipments");
+    }
     /**
      * Generate occasional orders during off-hours
      * Runs every 30 minutes during off-hours
@@ -99,7 +148,7 @@ public class MockClientService {
             MockClient client = getRandomClient();
             OrderRequest orderRequest = createOrderRequest(client, context);
 
-            System.out.println("🎭 Mock Client (" + context + "): " + client.name +
+            System.out.println(" Mock Client (" + context + "): " + client.name +
                     " placing order with " + orderRequest.getItems().size() + " items");
 
             // Submit through AI agent like a real client would
@@ -370,11 +419,11 @@ public class MockClientService {
         // Create order entity (simplified - normally would go through controller validation)
         try {
             // This is a simplified direct processing - in real system would use OrderController
-            System.out.println("🤖 Processing mock order through AI agent...");
+            System.out.println(" Processing mock order through AI agent...");
 
             // Here we would actually create and process the order
             // For now, we'll just log it to demonstrate the concept
-            System.out.println("📋 Mock Order Details:");
+            System.out.println(" Mock Order Details:");
             System.out.println("   Client: " + orderRequest.getClientName());
             System.out.println("   Items: " + orderRequest.getItems().size());
             System.out.println("   Delivery: " + orderRequest.getRequestedDeliveryDate());

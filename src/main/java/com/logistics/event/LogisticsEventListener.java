@@ -23,7 +23,7 @@ public class LogisticsEventListener {
     @Async
     public void handleOrderReceived(OrderReceivedEvent event) {
         Order order = event.getOrder();
-        System.out.println("📨 Event: Order received - " + order.getId());
+        System.out.println("Event: Order received - " + order.getId());
         
         // Send acknowledgment notification
         notificationService.sendNotification(
@@ -46,7 +46,7 @@ public class LogisticsEventListener {
     @Async
     public void handleOrderValidated(OrderValidatedEvent event) {
         Order order = event.getOrder();
-        System.out.println("✅ Event: Order validated - " + order.getId());
+        System.out.println("Event: Order validated - " + order.getId());
         
         // Log validation success
         notificationService.sendInternalNotification(
@@ -62,7 +62,7 @@ public class LogisticsEventListener {
     @Async
     public void handleOrderFulfilled(OrderFulfilledEvent event) {
         Order order = event.getOrder();
-        System.out.println("📦 Event: Order fulfilled - " + order.getId());
+        System.out.println("Event: Order fulfilled - " + order.getId());
         
         // Notify client of fulfillment
         notificationService.sendNotification(
